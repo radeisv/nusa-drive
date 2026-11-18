@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Nusa Drive — a 3D open-world crime game on a sunset-soaked tropical island: steal cars, outrun the police, and run four jobs for the fixer Mira.">
+<meta name="theme-color" content="#1a2230">
+<meta name="color-scheme" content="dark">
+<title>Nusa Drive — an open-world crime game</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a2230; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hidden { display: none !important; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #f2f2ea; text-shadow: 0 1px 3px rgba(0,0,0,.7); z-index: 5; }
+  .panel { background: rgba(10, 14, 22, .72); border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 8px 12px; }
+  #mission-card { position: absolute; top: 14px; left: 14px; width: 300px; border-left: 3px solid #ffd23e; }
+  #m-ch { font-size: 13px; font-weight: 800; color: #ffd23e; letter-spacing: 1px; }
+  #m-timer { float: right; font-size: 15px; font-weight: 700; color: #ffe9a8; }
+  #m-obj { font-size: 15px; font-weight: 600; margin-top: 3px; line-height: 1.35; }
+  #m-bar { display: flex; gap: 4px; margin-top: 6px; }
+  #m-bar i { flex: 1; height: 5px; background: rgba(255,255,255,.22); border-radius: 3px; }
+  #m-bar i.done { background: #37c978; }
+  #m-bar i.now { background: #ffd23e; }
+  #m-next { font-size: 12px; color: #c8c8b8; margin-top: 5px; }
+  #police-list { position: absolute; top: 176px; left: 14px; width: 300px; font-size: 12px; }
+  #police-list .pl-head { font-weight: 800; color: #7db8ff; letter-spacing: 1px; font-size: 11px; margin-bottom: 4px; }
+  #police-list .pl-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  #police-list em { font-style: normal; font-weight: 700; color: #ffd23e; background: rgba(255,210,62,.14); border-radius: 4px; padding: 0 5px; }
+  #vitals { position: absolute; left: 14px; bottom: 244px; width: 220px; }
+  #health-bar, #respect-bar { height: 12px; background: rgba(0,0,0,.55); border-radius: 6px; overflow: hidden; margin-top: 4px; }
+  #respect-bar { height: 6px; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #37c978, #7be495); border-radius: 6px; }
+  #health-fill.low { background: linear-gradient(90deg, #d8382a, #f2765a); }
+  #respect-fill { height: 100%; width: 0; background: linear-gradient(90deg, #ff2a7a, #ff9a3c); border-radius: 6px; }
+  #health-num { font-weight: 700; }
+  #respect-line { font-size: 11px; color: #c8c8b8; margin-top: 4px; letter-spacing: 1px; }
+  #stars { font-size: 26px; letter-spacing: 3px; color: #ffd23e; margin-top: 2px; }
+  #stars.hot { animation: pulse .7s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+  #top-right { position: absolute; top: 14px; right: 14px; text-align: right; }
+  #cash { font-size: 26px; font-weight: 800; color: #7be495; }
+  #clock { font-size: 16px; color: #ffe9a8; }
+  #weapons { position: absolute; top: 92px; right: 14px; display: flex; gap: 6px; justify-content: flex-end; }
+  #weapons .slot { width: 56px; padding: 5px 4px; text-align: center; font-size: 10px; color: #c8c8b8; background: rgba(10,14,22,.72); border: 1px solid rgba(255,255,255,.14); border-radius: 8px; }
+  #weapons .slot b { display: block; font-size: 13px; color: #f2f2ea; }
+  #weapons .slot.armed { border-color: #ffd23e; color: #ffd23e; }
+  #weapons .slot.armed b { color: #ffd23e; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; width: 220px; height: 220px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); background: #241a3a; }
+  #map-overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(8,12,20,.85); pointer-events: auto; }
+  .map-panel { padding: 14px 16px; }
+  .map-head { display: flex; gap: 24px; justify-content: space-between; margin-bottom: 8px; font-size: 15px; }
+  .map-head b { color: #ff2a7a; letter-spacing: 1px; }
+  .map-head span { font-size: 12px; color: #c8c8b8; }
+  #bigmap { display: block; background: #241a3a; border-radius: 10px; }
+  .map-foot { display: flex; gap: 24px; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #d8d8c8; }
+  #dialogue { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: 560px; max-width: 80%; display: flex; gap: 12px; align-items: center; }
+  #dlg-face { width: 52px; height: 52px; flex: none; border-radius: 8px; background: linear-gradient(135deg, #ff2a7a, #ff9a3c); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; color: #fff; text-shadow: none; }
+  #dlg-name { font-size: 12px; font-weight: 800; color: #ff8ab0; letter-spacing: 1px; }
+  #dlg-text { font-size: 15px; line-height: 1.4; margin-top: 2px; }
+  #radio { position: absolute; right: 18px; bottom: 148px; text-align: right; font-size: 12px; line-height: 1.5; }
+  #radio-station { font-weight: 800; color: #ff8ab0; }
+  #radio-track { color: #d8d8c8; }
+  #speed-box { position: absolute; right: 18px; bottom: 18px; text-align: right; }
+  #speed { font-size: 44px; font-weight: 800; line-height: 1; }
+  #gear { font-size: 20px; font-weight: 800; color: #ffd23e; margin-left: 8px; }
+  #speed-box .unit { font-size: 14px; color: #d8d8c8; }
+  #cond { height: 6px; background: rgba(0,0,0,.55); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+  #cond-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #37c978, #7be495); }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; }
+  #banner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 800; color: #ffd23e; text-align: center; opacity: 0; transition: opacity .3s; max-width: 80%; }
+  #banner.show { opacity: 1; }
+  #toast { position: absolute; bottom: 250px; left: 50%; transform: translateX(-50%); font-size: 16px; background: rgba(12,18,26,.75); border-radius: 8px; padding: 8px 14px; opacity: 0; transition: opacity .3s; max-width: 640px; text-align: center; }
+  #toast.show { opacity: 1; }
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; color: #f2f2ea; background: linear-gradient(180deg, rgba(10,16,26,.30), rgba(10,16,26,.58)); }
+  .screen .card { text-align: center; max-width: 620px; padding: 32px 40px; }
+  .screen .title-card { width: 94%; max-width: 1120px; padding: 20px 28px; display: flex; gap: 28px; align-items: flex-start; justify-content: space-between; text-align: left; }
+  .title-left { position: relative; flex: 1; min-width: 0; }
+  .title-sun { width: 240px; height: 240px; position: absolute; top: -50px; left: -40px; z-index: 0; border-radius: 50%; opacity: .92; pointer-events: none; background: radial-gradient(circle, #fff2c8 0%, #ffd23e 28%, #ff7a3c 58%, rgba(255,42,122,.5) 76%, rgba(255,42,122,0) 72%); }
+  .title-left h1 { z-index: 1; position: relative; margin: 6px 0 0; font-size: 92px; line-height: .94; letter-spacing: 2px; color: transparent; background: linear-gradient(180deg, #ff8ac2 0%, #ff7a3c 40%, #ff2a7a 68%, #39d0ff 100%); -webkit-background-clip: text; background-clip: text; }
+  .title-left .menu { margin: 20px 0 0; display: flex; flex-direction: column; gap: 4px; }
+  .screen .menu-item { margin: 0; padding: 7px 12px; display: block; text-align: left; font-size: 26px; font-weight: 800; letter-spacing: 2px; color: #f2f2ea; background: none; border: none; border-left: 4px solid transparent; border-radius: 0; cursor: pointer; text-shadow: 0 1px 6px rgba(0,0,0,.75); }
+  .screen .menu-item:hover, .screen .menu-item.hot { color: #fff; border-left-color: #ff2a7a; background: linear-gradient(90deg, rgba(255,42,122,.55), transparent); }
+  .title-left .sub { margin: 16px 0 0; max-width: 430px; font-size: 16px; }
+  .title-right { flex: none; width: 308px; }
+  .howto { text-align: left; }
+  .howto h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: 2px; color: #39d0ff; }
+  .howto-row { display: flex; gap: 10px; padding: 3px 0; font-size: 13px; line-height: 1.4; }
+  .howto-row b { flex: none; min-width: 66px; color: #ffd23e; }
+  .cast { margin: 16px 0 20px; display: flex; gap: 8px; justify-content: flex-end; }
+  .face { position: relative; width: 50px; height: 50px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--c); font-size: 22px; font-weight: 800; color: #fff; text-shadow: none; }
+  .face span { position: absolute; left: 50%; bottom: -17px; transform: translateX(-50%); font-size: 10px; font-weight: 600; color: #e8e4d2; white-space: nowrap; }
+  .screen h2 { font-size: 40px; margin: 0 0 8px; color: #ffd23e; }
+  .screen .sub { font-size: 19px; color: #e8e4d2; margin: 10px 0 22px; line-height: 1.5; }
+  .screen .controls { font-size: 14px; color: #c8c8b8; line-height: 1.9; margin: 18px 0 6px; }
+  .screen button { pointer-events: auto; font-size: 18px; font-weight: 700; padding: 12px 26px; margin: 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: #ffd23e; color: #1a2230; cursor: pointer; }
+  .screen button.secondary { background: rgba(255,255,255,.14); color: #f2f2ea; }
+  .screen button:hover { filter: brightness(1.12); }
+  .screen .tag { font-size: 13px; color: #9aa4b0; margin-top: 16px; }
+  .loading-note { font-size: 14px; color: #ffe9a8; margin: 0 0 18px; animation: note-pulse 1s ease-in-out infinite alternate, note-fade .8s ease 2.4s forwards; }
+  @keyframes note-pulse { from { opacity: .55; } to { opacity: 1; } }
+  @keyframes note-fade { to { opacity: 0; visibility: hidden; } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game" aria-label="Nusa Drive: an open-world crime game on a tropical island city"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div id="mission-card" class="panel" role="group" aria-label="Current mission">
+    <div><span id="m-ch">NUSA DRIVE</span><span id="m-timer"></span></div>
+    <div id="m-obj">Next job coming from Mira…</div>
+    <div id="m-bar"></div>
+    <div id="m-next"></div>
+  </div>
+  <div id="police-list" class="panel hidden" aria-label="Police response units"></div>
+  <div id="vitals" class="panel" role="group" aria-label="Health and wanted level">
+    <div>Health <span id="health-num">100</span></div>
+    <div id="health-bar"><div id="health-fill"></div></div>
+    <div id="stars" aria-label="Wanted level">☆☆☆☆☆</div>
+    <div id="respect-line">RESPECT <span id="respect-num">0</span>/4</div>
+    <div id="respect-bar"><div id="respect-fill"></div></div>
+  </div>
+  <div id="top-right" class="panel" role="group" aria-label="Cash and time of day">
+    <div id="cash">$120</div>
+    <div id="clock">DAY 1 · 18:40</div>
+  </div>
+  <div id="weapons" aria-label="Weapons">
+    <div class="slot armed"><b>1</b>FISTS</div>
+    <div class="slot"><b>2</b>PISTOL ∞</div>
+    <div class="slot"><b>3</b>LOCKED</div>
+    <div class="slot"><b>4</b>LOCKED</div>
+  </div>
+  <canvas id="minimap" width="220" height="220" role="img" aria-label="Minimap of Nusa island: roads, your position, police cars, and the mission waypoint"></canvas>
+  <div class="hidden" id="map-overlay" aria-label="City map of Nusa island" role="dialog">
+    <div class="panel map-panel">
+      <div class="map-head"><b>NUSA DRIVE · CITY MAP</b><span>M / Esc close</span></div>
+      <canvas width="520" height="520" id="bigmap"></canvas>
+      <div class="map-foot"><span id="map-job"></span><span class="map-legend">◆ you · ● police · ◆ waypoint</span></div>
+    </div>
+  </div>
+  <div id="dialogue" class="panel hidden" aria-live="polite">
+    <div id="dlg-face">M</div>
+    <div><div id="dlg-name">MIRA · FIXER</div><div id="dlg-text"></div></div>
+  </div>
+  <div id="radio" class="panel" aria-label="Radio station">
+    <span id="radio-station">WAVE 88.1 · Neon Drive</span><br>
+    <span id="radio-track">Pink Horizon — Lumen Kids</span>
+  </div>
+  <div id="speed-box" class="panel hidden" aria-label="Driving speed"><span id="speed">0</span><span id="gear">G1</span> <span class="unit">km/h</span><div id="cond"><div id="cond-fill"></div></div></div>
+  <div id="crosshair" class="hidden" aria-hidden="true"></div>
+  <div id="banner"></div>
+  <div id="toast" role="status"></div>
+</div>
+
+<div class="screen" id="screen-title">
+  <div class="title-card card">
+    <div class="title-left">
+      <div class="title-sun" aria-hidden="true"></div>
+      <h1>NUSA<br>DRIVE</h1>
+      <p class="loading-note" aria-hidden="true">Loading the island…</p>
+      <nav class="menu">
+        <button class="hot menu-item" id="btn-continue">CONTINUE</button>
+        <button class="menu-item" id="btn-new">NEW GAME</button>
+      </nav>
+      <p class="sub">A sunset-soaked island city. One courier, Raka, four jobs from the fixer Mira — and a police force that never forgets. Drive, steal, run, and make the airport heist pay.</p>
+      <div class="tag">An original game. No Rockstar content, no borrowed assets — every street, name and sound is its own.</div>
+    </div>
+    <div class="title-right">
+      <div class="howto panel">
+        <h3>HOW TO PLAY</h3>
+        <div class="howto-row">
+          <b>WASD</b><span>Walk / drive</span>
+        </div>
+        <div class="howto-row">
+          <b>Mouse</b><span>Camera · click to lock</span>
+        </div>
+        <div class="howto-row">
+          <b>Shift</b><span>Run</span>
+        </div>
+        <div class="howto-row">
+          <b>Space</b><span>Jump / handbrake</span>
+        </div>
+        <div class="howto-row">
+          <b>F</b><span>Enter / steal a car</span>
+        </div>
+        <div class="howto-row">
+          <b>E</b><span>Interact</span>
+        </div>
+        <div class="howto-row">
+          <b>1–2</b><span>Fists / pistol</span>
+        </div>
+        <div class="howto-row">
+          <b>Q</b><span>Radio station</span>
+        </div>
+        <div class="howto-row">
+          <b>M</b><span>City map</span>
+        </div>
+        <div class="howto-row">
+          <b>Esc</b><span>Pause</span>
+        </div>
+      </div>
+      <div class="cast" aria-label="Characters">
+        <div style="--c:#ff2a7a" class="face">R<span>Raka</span></div>
+        <div style="--c:#39d0ff" class="face">M<span>Mira</span></div>
+        <div style="--c:#ffd23e" class="face">J<span>Juno</span></div>
+        <div style="--c:#7a5cff" class="face">V<span>Vega</span></div>
+        <div style="--c:#37c978" class="face">S<span>Sinta</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-pause" class="screen hidden">
+  <div class="card">
+    <h2>Paused</h2>
+    <p class="sub">The island waits for you.</p>
+    <button id="btn-resume">Resume</button>
+    <button id="btn-save" class="secondary">Save</button>
+    <button id="btn-title" class="secondary">Save &amp; Title</button>
+  </div>
+</div>
+
+<div id="screen-over" class="screen hidden">
+  <div class="card">
+    <h2 id="over-title">BUSTED</h2>
+    <p class="sub" id="over-sub"></p>
+    <button id="btn-respawn">Get back out there</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
