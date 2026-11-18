@@ -1,0 +1,11 @@
+# Build output from main.ts (game/ + screenshots/ + dossier.json); regenerated, never committed.
+out/
+# Local run logs from the dev server and Playwright checks.
+*.log
+# macOS Finder metadata files.
+.DS_Store
+# Editor workspace settings (per-machine, not part of the entry).
+.vscode/
+# Vim / editor backup files.
+*.swp
+*~
