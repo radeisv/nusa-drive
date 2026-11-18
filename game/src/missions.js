@@ -8,10 +8,10 @@ export const MISSIONS = [
     giver: 'Mira',
     reward: 300,
     timeLimit: TUNING.mission1TimeSec,
-    briefing: 'Mira: Raka, first job. Pick up the package at the plaza fountain, then run it across the bridge to the airport cargo bay. 200 seconds. Don\'t dawdle.',
+    briefing: 'Mira: First job, Raka. Grab the package by the plaza fountain, run it over the bridge to the airport cargo bay. 200 seconds — do not dawdle.',
     steps: [
-      { text: 'Pick up the package at the plaza fountain', target: 'plazaPickup', radius: 10 },
-      { text: 'Deliver the package to the airport cargo bay', target: 'airportCargo', radius: 12 },
+      { text: 'Collect the package by the plaza fountain', target: 'plazaPickup', radius: 10 },
+      { text: 'Run the package to the airport cargo bay', target: 'airportCargo', radius: 12 },
     ],
   },
   {
@@ -20,10 +20,10 @@ export const MISSIONS = [
     giver: 'Mira',
     reward: 250,
     timeLimit: 0,
-    briefing: 'Mira: A client needs a ride from the marina to the downtown hotel. Any car will do, but a taxi keeps it quiet. Pick them up.',
+    briefing: 'Mira: A client needs a lift from the marina to the downtown hotel. Any car works, but a taxi keeps it quiet.',
     steps: [
-      { text: 'Pick up the passenger at the marina', target: 'marinaPickup', radius: 10 },
-      { text: 'Drop the passenger at the downtown hotel', target: 'hotelDropoff', radius: 10 },
+      { text: 'Pick up the rider at the marina', target: 'marinaPickup', radius: 10 },
+      { text: 'Drop the rider at the downtown hotel', target: 'hotelDropoff', radius: 10 },
     ],
   },
   {
@@ -32,10 +32,10 @@ export const MISSIONS = [
     giver: 'Mira',
     reward: 500,
     timeLimit: 0,
-    briefing: 'Mira: A pink sports car is sitting at the marina showroom. Borrow it — permanently — and bring it to the marina garage. The owner will not miss it. Much.',
+    briefing: 'Mira: A pink sports car sits at the marina showroom. Borrow it — for good — and bring it to the marina garage.',
     steps: [
-      { text: 'Steal the pink sports car at the marina showroom', target: 'showroomCar', radius: 8, needCar: 'sports' },
-      { text: 'Deliver the sports car to the marina garage', target: 'marinaGarage', radius: 12, needCar: 'sports' },
+      { text: 'Take the pink sports car from the marina showroom', target: 'showroomCar', radius: 8, needCar: 'sports' },
+      { text: 'Park the sports car in the marina garage', target: 'marinaGarage', radius: 12, needCar: 'sports' },
     ],
   },
   {
@@ -44,42 +44,42 @@ export const MISSIONS = [
     giver: 'Mira',
     reward: 1500,
     timeLimit: 0,
-    briefing: 'Mira: Last job, Raka. Cargo is waiting at the airport terminal. Grab it and the whole island will be after you — get it to Garage 7 and we are done.',
+    briefing: 'Mira: Last job. Cargo waits at the airport terminal — grab it, then lose the whole island and reach Garage 7.',
     steps: [
       { text: 'Grab the cargo at the airport terminal (press E)', target: 'terminalCargo', radius: 8, interact: true },
-      { text: 'Escape to Garage 7 downtown', target: 'hideout', radius: 12, setWanted: 3 },
+      { text: 'Lose the heat and reach Garage 7 downtown', target: 'hideout', radius: 12, setWanted: 3 },
     ],
   },
 ];
 
 export function createMissions(game) {
-  const missions = {
+  const state = {
     index: 0,
     stepIndex: 0,
     timer: 0,
-    state: 'idle', // idle | active | done
+    state: 'idle',
     completedCount: 0,
     storyDone: false,
     taxi: { state: 'idle', fare: 0, pickup: null, dropoff: null, cooldown: 0 },
     trial: { ringIndex: -1, timer: 0, active: false },
   };
 
-  const currentMission = () => MISSIONS[missions.index] || null;
+  const currentMission = () => MISSIONS[state.index] || null;
   const currentStep = () => {
     const mission = currentMission();
-    if (!mission || missions.state !== 'active') return null;
-    return mission.steps[missions.stepIndex] || null;
+    if (!mission || state.state !== 'active') return null;
+    return mission.steps[state.stepIndex] || null;
   };
-  const targetPosition = (step) => game.world.landmarks[step.target];
+  const targetOf = (step) => game.world.landmarks[step.target];
 
   function moveBeacon() {
     const step = currentStep();
     if (step) {
-      const pos = targetPosition(step);
+      const pos = targetOf(step);
       game.world.beacon.position.set(pos.x, 0, pos.z);
       game.world.beacon.visible = true;
-    } else if (missions.taxi.state === 'pickup' || missions.taxi.state === 'dropoff') {
-      const pos = missions.taxi.state === 'pickup' ? missions.taxi.pickup : missions.taxi.dropoff;
+    } else if (state.taxi.state === 'pickup' || state.taxi.state === 'dropoff') {
+      const pos = state.taxi.state === 'pickup' ? state.taxi.pickup : state.taxi.dropoff;
       game.world.beacon.position.set(pos.x, 0, pos.z);
       game.world.beacon.visible = true;
     } else {
@@ -90,16 +90,16 @@ export function createMissions(game) {
   function startMission(index) {
     const mission = MISSIONS[index];
     if (!mission) {
-      missions.state = 'done';
-      missions.storyDone = true;
+      state.state = 'done';
+      state.storyDone = true;
       game.hud.showBanner('Story complete — Nusa Drive is yours, Raka.');
       moveBeacon();
       return;
     }
-    missions.index = index;
-    missions.stepIndex = 0;
-    missions.timer = mission.timeLimit;
-    missions.state = 'active';
+    state.index = index;
+    state.stepIndex = 0;
+    state.timer = mission.timeLimit;
+    state.state = 'active';
     game.hud.showBanner(`${mission.name} — ${mission.giver}`);
     game.hud.dialogue(mission.giver, mission.briefing.replace(/^Mira: /, ''));
     game.audio.pickup();
@@ -108,15 +108,15 @@ export function createMissions(game) {
 
   function completeMission() {
     const mission = currentMission();
-    missions.completedCount += 1;
+    state.completedCount += 1;
     game.addCash(mission.reward);
     game.audio.cash();
     game.hud.showBanner(`Mission complete: ${mission.name} — +$${mission.reward}`);
     game.saveGame();
-    missions.state = 'idle';
+    state.state = 'idle';
     moveBeacon();
     setTimeout(() => {
-      if (missions.state === 'idle' && !missions.storyDone) startMission(missions.index + 1);
+      if (state.state === 'idle' && !state.storyDone) startMission(state.index + 1);
     }, 2500);
   }
 
@@ -124,20 +124,20 @@ export function createMissions(game) {
     const mission = currentMission();
     game.hud.showBanner(`Mission failed: ${reason}`);
     game.hud.toast(`${mission.name} failed. Try again — the job is still waiting.`);
-    missions.stepIndex = 0;
-    missions.timer = mission.timeLimit;
+    state.stepIndex = 0;
+    state.timer = mission.timeLimit;
     moveBeacon();
   }
 
   function advanceStep() {
     const mission = currentMission();
     game.audio.pickup();
-    missions.stepIndex += 1;
-    if (missions.stepIndex >= mission.steps.length) {
+    state.stepIndex += 1;
+    if (state.stepIndex >= mission.steps.length) {
       completeMission();
       return;
     }
-    const next = mission.steps[missions.stepIndex];
+    const next = mission.steps[state.stepIndex];
     game.hud.toast(next.text);
     if (next.setWanted) {
       game.police.addCrime(next.setWanted * TUNING.wantedPerStar, 'heist');
@@ -166,19 +166,18 @@ export function createMissions(game) {
     return best || { x: p.x + 80, z: p.z };
   }
 
-  function updateTaxi(dt) {
-    const taxi = missions.taxi;
-    function offerFare() {
-      taxi.pickup = randomRoadPoint(60, 160);
-      taxi.fare = 80 + Math.floor(Math.random() * 8) * 10;
-      taxi.state = 'pickup';
-      game.hud.toast(`Fare nearby — pick up the passenger ($${taxi.fare}).`);
-      moveBeacon();
-    }
+  function tickTaxi(dt) {
+    const taxi = state.taxi;
     if (taxi.cooldown > 0) taxi.cooldown -= dt;
     const inTaxi = game.playerInCar && game.playerCar && game.playerCar.type === 'taxi';
     if (taxi.state === 'idle') {
-      if (missions.completedCount >= 2 && inTaxi && taxi.cooldown <= 0) offerFare();
+      if (state.completedCount >= 2 && inTaxi && taxi.cooldown <= 0) {
+        taxi.pickup = randomRoadPoint(60, 160);
+        taxi.fare = 80 + Math.floor(Math.random() * 8) * 10;
+        taxi.state = 'pickup';
+        game.hud.toast(`Fare nearby — pick up the passenger ($${taxi.fare}).`);
+        moveBeacon();
+      }
       return;
     }
     if (!inTaxi) {
@@ -208,8 +207,8 @@ export function createMissions(game) {
     }
   }
 
-  function updateTrial(dt) {
-    const trial = missions.trial;
+  function tickTrial(dt) {
+    const trial = state.trial;
     const pos = game.playerPosition();
     const rings = game.world.rings;
     const showRings = game.playerInCar;
@@ -255,11 +254,11 @@ export function createMissions(game) {
   }
 
   function update(dt, interactPressed) {
-    if (missions.state === 'active') {
+    if (state.state === 'active') {
       const mission = currentMission();
       if (mission.timeLimit > 0) {
-        missions.timer -= dt;
-        if (missions.timer <= 0) {
+        state.timer -= dt;
+        if (state.timer <= 0) {
           failMission('Out of time');
           return;
         }
@@ -267,7 +266,7 @@ export function createMissions(game) {
       const step = currentStep();
       if (step) {
         const pos = game.playerPosition();
-        const target = targetPosition(step);
+        const target = targetOf(step);
         const d = dist2D(pos.x, pos.z, target.x, target.z);
         let done = false;
         if (step.interact) done = d < step.radius && interactPressed;
@@ -276,8 +275,8 @@ export function createMissions(game) {
         if (done) advanceStep();
       }
     }
-    updateTaxi(dt);
-    updateTrial(dt);
+    tickTaxi(dt);
+    tickTrial(dt);
   }
 
   function objectiveText() {
@@ -285,40 +284,40 @@ export function createMissions(game) {
     if (step) {
       const mission = currentMission();
       let text = `${mission.name}: ${step.text}`;
-      if (mission.timeLimit > 0) text += ` — ${Math.max(0, Math.ceil(missions.timer))}s`;
+      if (mission.timeLimit > 0) text += ` — ${Math.max(0, Math.ceil(state.timer))}s`;
       if (step.interact) {
         const pos = game.playerPosition();
-        const target = targetPosition(step);
+        const target = targetOf(step);
         if (dist2D(pos.x, pos.z, target.x, target.z) < step.radius) text += ' — press E';
       }
       return text;
     }
-    if (missions.taxi.state === 'pickup') return `Taxi fare: pick up the passenger ($${missions.taxi.fare})`;
-    if (missions.taxi.state === 'dropoff') return 'Taxi fare: drop the passenger at the marker';
-    if (missions.trial.active) return `Time trial: ring ${missions.trial.ringIndex} of 5 — ${Math.ceil(missions.trial.timer)}s left`;
-    if (missions.storyDone) return 'Story complete. Drive a taxi for fares, or race the rings on the highway.';
-    if (missions.state === 'idle') return 'Next job coming from Mira… explore the island.';
+    if (state.taxi.state === 'pickup') return `Taxi fare: pick up the passenger ($${state.taxi.fare})`;
+    if (state.taxi.state === 'dropoff') return 'Taxi fare: drop the passenger at the marker';
+    if (state.trial.active) return `Time trial: ring ${state.trial.ringIndex} of 5 — ${Math.ceil(state.trial.timer)}s left`;
+    if (state.storyDone) return 'Story complete. Drive a taxi for fares, or race the rings on the highway.';
+    if (state.state === 'idle') return 'Next job coming from Mira… explore the island.';
     return '';
   }
 
   function waypoint() {
     const step = currentStep();
-    if (step) return targetPosition(step);
-    if (missions.taxi.state === 'pickup') return missions.taxi.pickup;
-    if (missions.taxi.state === 'dropoff') return missions.taxi.dropoff;
-    if (missions.trial.active) {
-      const ring = game.world.rings[missions.trial.ringIndex];
+    if (step) return targetOf(step);
+    if (state.taxi.state === 'pickup') return state.taxi.pickup;
+    if (state.taxi.state === 'dropoff') return state.taxi.dropoff;
+    if (state.trial.active) {
+      const ring = game.world.rings[state.trial.ringIndex];
       return ring ? { x: ring.x, z: ring.z } : null;
     }
     return null;
   }
 
-  missions.currentMission = currentMission;
-  missions.currentStep = currentStep;
-  missions.startMission = startMission;
-  missions.update = update;
-  missions.objectiveText = objectiveText;
-  missions.waypoint = waypoint;
-  missions.moveBeacon = moveBeacon;
-  return missions;
+  state.currentMission = currentMission;
+  state.currentStep = currentStep;
+  state.startMission = startMission;
+  state.update = update;
+  state.objectiveText = objectiveText;
+  state.waypoint = waypoint;
+  state.moveBeacon = moveBeacon;
+  return state;
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createVehicle } from './vehicles.js';
 import { boxPart, mergeParts, xform } from './merge.js';
-import { glowTexture } from './textures.js';
+import { flashTexture, glowTexture } from './textures.js';
 
 export const SHOT_NAMES = ['chase', 'downtown', 'airport', 'title'];
 
@@ -47,8 +47,11 @@ export function stageShot(name, game) {
       { segDir: 1, s: 340 },
       { segDir: -1, s: 348 },
       { segDir: 1, s: 356 },
+      { segDir: -1, s: 332 },
+      { segDir: 1, s: 364 },
+      { segDir: -1, s: 372 },
     ];
-    game.peds.slice(0, 3).forEach((ped, i) => {
+    game.peds.slice(0, 6).forEach((ped, i) => {
       ped.seg = 8;
       ped.segDir = pedSpots[i].segDir;
       ped.s = pedSpots[i].s;
@@ -133,10 +136,14 @@ function addPalms(game, spots) {
 }
 
 function addMuzzleFlash(game) {
-  const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffc860, transparent: true, opacity: 0.95, depthWrite: false }));
+  const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTexture(), color: 0xffd88a, transparent: true, opacity: 0.98, depthWrite: false }));
   flash.position.set(-19.5, 1.35, 41.3);
-  flash.scale.set(5, 5, 1);
+  flash.scale.set(3.6, 3.6, 1);
   game.scene.add(flash);
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false }));
+  core.position.set(-19.5, 1.35, 41.3);
+  core.scale.set(1.2, 1.2, 1);
+  game.scene.add(core);
   const flashLight = new THREE.PointLight(0xffb060, 80, 25);
   flashLight.position.set(-18.5, 2.2, 39);
   game.scene.add(flashLight);

@@ -22,8 +22,8 @@ import { createRenderer } from './render.js';
 import { stageShot, SHOT_NAMES } from './shots.js';
 
 const STEP = 1 / 60;
-const TRAFFIC_COUNT = 28;
-const PED_COUNT = 26;
+const TRAFFIC_COUNT = 34;
+const PED_COUNT = 38;
 const MISSION_COUNT = 4;
 
 const params = new URLSearchParams(window.location.search);
@@ -38,72 +38,90 @@ const rng = createRandom(seed);
 const world = buildWorld(scene, rng);
 const input = createInput(canvas);
 const audio = createAudio();
-const hud = createHud();
+const hud = createHud(audio);
 const player = createPlayer(scene);
 const police = createPolice(scene, world, rng);
 
-const game = {
-  scene, renderer, world, input, audio, hud, player, police,
-  vehicles: [], peds: [], missions: null, time: 0,
-  clockMinutes: TUNING.clockStartMinutes, cash: STORY.startingCash,
-  playerCar: null, playerInCar: false, lastGunshotAt: -999, shotDrive: false, screen: 'title',
-  fx: {
-    spawnSparks: (x, z) => renderer.spawnSparks(x, z),
-    addSkid: (x, z, heading) => renderer.addSkid(x, z, heading),
-    spawnSmoke: (x, z) => renderer.spawnSmoke(x, z),
-    update: (dt) => renderer.updateEffects(dt),
-  },
-  playerPosition() {
-    if (game.playerInCar && game.playerCar) return { x: game.playerCar.x, z: game.playerCar.z };
-    return { x: player.x, z: player.z };
-  },
-  playerSpeed() {
-    if (game.playerInCar && game.playerCar) return Math.abs(game.playerCar.speed);
-    return input.isDown('KeyW') || input.isDown('KeyA') || input.isDown('KeyS') || input.isDown('KeyD') ? 6 : 0;
-  },
-  addCash(amount) { game.cash += amount; },
-  _lastCrimeAt: {},
-  addCrime(points, reason) {
-    const now = game.time;
-    if (now - (game._lastCrimeAt[reason] || -999) < 2) return;
-    game._lastCrimeAt[reason] = now;
-    police.addCrime(points, reason);
-  },
-  damagePlayer(amount) { damagePlayer(player, amount, game); },
-  onBusted() { endRun('busted'); },
-  onWasted() { endRun('wasted'); },
-  saveGame,
-  loadGame,
-};
+const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'taxi', 'taxi', 'pickup', 'sports'];
+
+function assembleGame() {
+  const game = {
+    scene, renderer, world, input, audio, hud, player, police,
+    vehicles: [], peds: [], missions: null, time: 0,
+    clockMinutes: TUNING.clockStartMinutes, cash: STORY.startingCash,
+    playerCar: null, playerInCar: false, lastGunshotAt: -999, shotDrive: false, screen: 'title',
+    crimeCooldown: {},
+    fx: {
+      spawnSparks: (x, z) => renderer.spawnSparks(x, z),
+      addSkid: (x, z, heading) => renderer.addSkid(x, z, heading),
+      spawnSmoke: (x, z) => renderer.spawnSmoke(x, z),
+      update: (dt) => renderer.updateEffects(dt),
+    },
+    playerPosition() {
+      if (game.playerInCar && game.playerCar) return { x: game.playerCar.x, z: game.playerCar.z };
+      return { x: player.x, z: player.z };
+    },
+    playerSpeed() {
+      if (game.playerInCar && game.playerCar) return Math.abs(game.playerCar.speed);
+      return input.isDown('KeyW') || input.isDown('KeyA') || input.isDown('KeyS') || input.isDown('KeyD') ? 6 : 0;
+    },
+    addCash(amount) { game.cash += amount; },
+    addCrime(points, reason) {
+      const now = game.time;
+      if (now - (game.crimeCooldown[reason] || -999) < 2) return;
+      game.crimeCooldown[reason] = now;
+      police.addCrime(points, reason);
+    },
+    damagePlayer(amount) { damagePlayer(player, amount, game); },
+    onBusted() { endRun('busted'); },
+    onWasted() { endRun('wasted'); },
+    saveGame,
+    loadGame,
+  };
+  return game;
+}
+
+const game = assembleGame();
 game.missions = createMissions(game);
 
-const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'taxi', 'taxi', 'pickup', 'sports'];
-for (let i = 0; i < TRAFFIC_COUNT; i += 1) {
-  const segIndex = Math.floor(rng.next() * world.segments.length);
-  const seg = world.segments[segIndex];
-  const s = rng.range(0, seg.length);
-  const t = s / seg.length;
-  const car = createVehicle(scene, rng.pick(TRAFFIC_TYPES), seg.x1 + (seg.x2 - seg.x1) * t, seg.z1 + (seg.z2 - seg.z1) * t, 0, {
-    driver: 'traffic', seg: segIndex, segDir: rng.chance(0.5) ? 1 : -1, s, cruiseSpeed: rng.range(10, 16),
-  });
-  game.vehicles.push(car);
+function scatterTraffic() {
+  for (let i = 0; i < TRAFFIC_COUNT; i += 1) {
+    const segIndex = Math.floor(rng.next() * world.segments.length);
+    const seg = world.segments[segIndex];
+    const s = rng.range(0, seg.length);
+    const t = s / seg.length;
+    const car = createVehicle(scene, rng.pick(TRAFFIC_TYPES), seg.x1 + (seg.x2 - seg.x1) * t, seg.z1 + (seg.z2 - seg.z1) * t, 0, {
+      driver: 'traffic', seg: segIndex, segDir: rng.chance(0.5) ? 1 : -1, s, cruiseSpeed: rng.range(10, 16),
+    });
+    game.vehicles.push(car);
+  }
 }
-const PARKED = [
-  { type: 'sedan', at: world.landmarks.parkedCar },
-  { type: 'sports', at: world.landmarks.showroomCar, color: 0xf040ff },
-  { type: 'taxi', at: { x: -60, z: 120 } },
-  { type: 'pickup', at: { x: 200, z: -120 } },
-  { type: 'sedan', at: { x: -180, z: 60 } },
-];
-for (const spot of PARKED) {
-  game.vehicles.push(createVehicle(scene, spot.type, spot.at.x, spot.at.z, rng.range(0, Math.PI * 2), { driver: 'none', color: spot.color }));
+
+function parkCars() {
+  const spots = [
+    { type: 'sedan', at: world.landmarks.parkedCar },
+    { type: 'sports', at: world.landmarks.showroomCar, color: 0xf040ff },
+    { type: 'taxi', at: { x: -60, z: 120 } },
+    { type: 'pickup', at: { x: 200, z: -120 } },
+    { type: 'sedan', at: { x: -180, z: 60 } },
+  ];
+  for (const spot of spots) {
+    game.vehicles.push(createVehicle(scene, spot.type, spot.at.x, spot.at.z, rng.range(0, Math.PI * 2), { driver: 'none', color: spot.color }));
+  }
 }
-for (let i = 0; i < PED_COUNT; i += 1) {
-  const seg = world.segments[Math.floor(rng.next() * world.segments.length)];
-  const s = rng.range(0, seg.length);
-  const t = s / seg.length;
-  game.peds.push(createPedestrian(scene, rng, world, seg.x1 + (seg.x2 - seg.x1) * t, seg.z1 + (seg.z2 - seg.z1) * t));
+
+function scatterPeds() {
+  for (let i = 0; i < PED_COUNT; i += 1) {
+    const seg = world.segments[Math.floor(rng.next() * world.segments.length)];
+    const s = rng.range(0, seg.length);
+    const t = s / seg.length;
+    game.peds.push(createPedestrian(scene, rng, world, seg.x1 + (seg.x2 - seg.x1) * t, seg.z1 + (seg.z2 - seg.z1) * t));
+  }
 }
+
+scatterTraffic();
+parkCars();
+scatterPeds();
 
 function nearestEnterableCar(maxDist) {
   let best = null;
@@ -167,29 +185,27 @@ function toggleCar() {
   else hud.toast('No car close enough — walk up to one and press F.');
 }
 
-function stepGame(dt, inputSource) {
+function stepGame(dt, keys) {
   game.time += dt;
   game.clockMinutes += TUNING.clockMinutesPerSec * dt;
-  const radioKey = inputSource.wasPressed('KeyQ');
-  const mapKey = inputSource.wasPressed('KeyM');
-  if (radioKey) hud.nextStation();
-  if (mapKey) hud.toggleMap(game);
-  if (inputSource.wasPressed('Digit1')) {
+  if (keys.wasPressed('KeyQ')) hud.nextStation();
+  if (keys.wasPressed('KeyM')) hud.toggleMap(game);
+  if (keys.wasPressed('Digit1')) {
     player.armed = 'fists';
     player.pistolMesh.visible = false;
   }
-  if (inputSource.wasPressed('Digit2')) {
+  if (keys.wasPressed('Digit2')) {
     player.armed = 'pistol';
     player.pistolMesh.visible = true;
   }
-  if (inputSource.wasPressed('KeyF')) toggleCar();
-  const interactPressed = inputSource.wasPressed('KeyE');
-  if (inputSource.takeClick() && !game.playerInCar) {
+  if (keys.wasPressed('KeyF')) toggleCar();
+  const interactPressed = keys.wasPressed('KeyE');
+  if (keys.takeClick() && !game.playerInCar) {
     if (player.armed === 'pistol') tryShoot(player, renderer.camera, game);
     else tryPunch(player, game);
   }
   if (game.playerInCar && game.playerCar) {
-    if (!game.playerCar.wrecked) stepPlayerCar(game.playerCar, inputSource, dt, game);
+    if (!game.playerCar.wrecked) stepPlayerCar(game.playerCar, keys, dt, game);
     player.x = game.playerCar.x;
     player.z = game.playerCar.z;
     for (const ped of game.peds) {
@@ -201,9 +217,7 @@ function stepGame(dt, inputSource) {
         renderer.spawnSparks(ped.x, ped.z);
       }
     }
-  } else {
-    stepPlayerOnFoot(player, inputSource, dt, game);
-  }
+  } else stepPlayerOnFoot(player, keys, dt, game);
   for (const car of game.vehicles) {
     if (car.driver === 'traffic') stepTrafficCar(car, dt, game);
     if (car.driver !== 'police') updateVehicleMesh(car, dt, game.time);
@@ -213,7 +227,7 @@ function stepGame(dt, inputSource) {
   police.update(dt, game);
   game.missions.update(dt, interactPressed);
   game.fx.update(dt);
-  inputSource.endFrame();
+  keys.endFrame();
 }
 
 function resetRunState() {
@@ -419,12 +433,12 @@ function runGame() {
       input.endFrame();
     }
     if (game.screen === 'title') {
-      const angle = now * 0.00002 + 0.6;
-      const driftX = Math.sin(angle) * 12;
-      const driftZ = Math.cos(angle) * 12;
+      const angle = now * 0.000025 + 0.9;
+      const driftX = Math.sin(angle) * 10;
+      const driftZ = Math.cos(angle) * 10;
       renderer.setShotCamera(
-        new THREE.Vector3(-260 + driftX, 9, 290 + driftZ),
-        new THREE.Vector3(-280, 3, 292),
+        new THREE.Vector3(-262 + driftX, 8.5, 288 + driftZ),
+        new THREE.Vector3(-282, 2.5, 291),
       );
       game.time += dt;
     } else {

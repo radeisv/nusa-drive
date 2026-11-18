@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { COLORS } from './config.js';
 import { cloudTexture, glowTexture } from './textures.js';
+import { mergeParts } from './merge.js';
 
 const SUN_DIR = new THREE.Vector3(-0.92, 0.16, -0.03).normalize();
 
-function makeSkyDome() {
+function skyDome() {
   const geo = new THREE.SphereGeometry(1400, 24, 16);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -30,17 +31,51 @@ function makeSkyDome() {
       uniform vec3 sunDir;
       uniform vec3 sunColor;
       void main() {
-        float h = clamp(vDir.y, 0.0, 1.0);
-        vec3 col = mix(horizon, top, pow(h, 0.55));
-        col = mix(band, col, smoothstep(0.02, 0.28, h));
-        float sun = pow(max(dot(normalize(vDir), normalize(sunDir)), 0.0), 90.0);
-        col += sunColor * sun * 1.2;
-        float glow = pow(max(dot(normalize(vDir), normalize(sunDir)), 0.0), 4.0);
-        col += sunColor * glow * 0.3;
-        gl_FragColor = vec4(col, 1.0);
+        float y = clamp(vDir.y, 0.0, 1.0);
+        vec3 c = mix(horizon, top, pow(y, 0.6));
+        c = mix(band, c, smoothstep(0.03, 0.3, y));
+        float s = clamp(dot(normalize(vDir), normalize(sunDir)), 0.0, 1.0);
+        c += sunColor * (pow(s, 110.0) * 1.4 + pow(s, 5.0) * 0.35);
+        gl_FragColor = vec4(c, 1.0);
       }`,
   });
   return new THREE.Mesh(geo, mat);
+}
+
+function buildSkyline(scene) {
+  const parts = [];
+  for (let i = 0; i < 26; i += 1) {
+    const a = -0.9 + (i / 25) * 1.8;
+    const h = 40 + ((i * 37) % 90);
+    const w = 26 + ((i * 53) % 30);
+    const px = Math.sin(a) * 1020;
+    const pz = Math.cos(a) * 1020;
+    parts.push({ geo: new THREE.BoxGeometry(w, h, w), matrix: new THREE.Matrix4().makeRotationY(a).setPosition(px, h / 2 - 4, pz), color: 0x2a1a3a });
+  }
+  const mesh = new THREE.Mesh(mergeParts(parts), new THREE.MeshBasicMaterial({ color: 0x2a1a3a, fog: false }));
+  scene.add(mesh);
+  return mesh;
+}
+
+function buildClouds(scene) {
+  const tex = cloudTexture();
+  const list = [];
+  let seed = 1234567;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  for (let i = 0; i < 30; i += 1) {
+    const a = rand() * Math.PI * 2;
+    const r = 900 + rand() * 500;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffd8c8, transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
+    sprite.position.set(Math.cos(a) * r, 120 + rand() * 140, Math.sin(a) * r);
+    const s = 380 + rand() * 220;
+    sprite.scale.set(s * 0.6, s * 0.3, 1);
+    scene.add(sprite);
+    list.push({ sprite, speed: 1.5 + rand() * 1.5 });
+  }
+  return list;
 }
 
 export function createRenderer(canvas, opts = {}) {
@@ -54,12 +89,12 @@ export function createRenderer(canvas, opts = {}) {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xe89a72, 260, 1100);
-  const sky = makeSkyDome();
+  const sky = skyDome();
   scene.add(sky);
 
   {
     const envScene = new THREE.Scene();
-    envScene.add(makeSkyDome());
+    envScene.add(skyDome());
     const sunBall = new THREE.Mesh(
       new THREE.SphereGeometry(60, 12, 12),
       new THREE.MeshBasicMaterial({ color: 0xfffbe8 }),
@@ -72,7 +107,7 @@ export function createRenderer(canvas, opts = {}) {
   }
 
   const glowTex = glowTexture();
-  function sunGlow(color, opacity, size) {
+  function sunSprite(color, opacity, size) {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTex, color, transparent: true, opacity, depthWrite: false, fog: false,
     }));
@@ -81,25 +116,10 @@ export function createRenderer(canvas, opts = {}) {
     scene.add(sprite);
     return sprite;
   }
-  const sunSprite = sunGlow(0xffb060, 0.95, 360);
-  const sunCore = sunGlow(0xfff2c8, 1, 150);
-  const cloudTex = cloudTexture();
-  const clouds = [];
-  const cloudSpots = [
-    [-700, 320, -500, 420], [500, 380, -700, 520], [-200, 300, 800, 380],
-    [800, 340, 500, 460], [-900, 360, 300, 400], [200, 420, -900, 560],
-    [0, 300, -1000, 480], [-500, 400, -850, 420], [950, 300, -250, 380],
-    [-350, 340, 950, 440], [650, 380, 850, 420], [100, 320, 1100, 500],
-    [-150, 360, -300, 360], [350, 330, 250, 400],
-  ];
-  for (const [x, y, z, s] of cloudSpots) {
-    const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, color: 0xff8a80, transparent: true, opacity: 0.45, depthWrite: false, fog: false }));
-    cloud.position.set(x, y, z);
-    cloud.scale.set(s * 0.5, s * 0.25, 1);
-    scene.add(cloud);
-    clouds.push({ sprite: cloud, speed: 1.5 + Math.random() * 1.5 });
-  }
-
+  const sunHalo = sunSprite(0xffb060, 0.95, 520);
+  const sunDisc = sunSprite(0xfff2c8, 1, 220);
+  const clouds = buildClouds(scene);
+  const skyline = buildSkyline(scene);
   const sun = new THREE.DirectionalLight(0xffb070, 2.8);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -152,10 +172,10 @@ export function createRenderer(canvas, opts = {}) {
   let smokeCursor = 0;
 
   function resize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    renderer.setSize(width, height, false);
-    camera.aspect = width / height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
   resize();
@@ -163,11 +183,60 @@ export function createRenderer(canvas, opts = {}) {
 
   let shotCamera = null;
 
+  function stepSparks(dt) {
+    for (let i = 0; i < SPARKS; i += 1) {
+      if (sparkLife[i] <= 0) continue;
+      sparkLife[i] -= dt;
+      sparkVel[i].y -= 18 * dt;
+      sparkPos[i * 3] += sparkVel[i].x * dt;
+      sparkPos[i * 3 + 1] = Math.max(0.05, sparkPos[i * 3 + 1] + sparkVel[i].y * dt);
+      sparkPos[i * 3 + 2] += sparkVel[i].z * dt;
+      if (sparkLife[i] <= 0) sparkPos[i * 3 + 1] = -100;
+    }
+    sparkGeo.attributes.position.needsUpdate = true;
+  }
+
+  function stepSkids(dt) {
+    for (const skid of skids) {
+      if (!skid.mesh.visible) continue;
+      skid.life -= dt;
+      skid.mesh.material.opacity = Math.max(0, (skid.life / 9) * 0.55);
+      if (skid.life <= 0) skid.mesh.visible = false;
+    }
+  }
+
+  function stepSmoke(dt) {
+    for (const puff of smokes) {
+      if (!puff.sprite.visible) continue;
+      puff.life -= dt;
+      const grow = 1 + (0.9 - Math.max(0, puff.life)) * 6;
+      puff.sprite.scale.set(grow * 2, grow * 2, 1);
+      puff.sprite.material.opacity = Math.max(0, puff.life / 0.9) * 0.5;
+      if (puff.life <= 0) puff.sprite.visible = false;
+    }
+  }
+
+  function followCar(game, out, look) {
+    const car = game.playerCar;
+    const fx = Math.sin(car.heading);
+    const fz = Math.cos(car.heading);
+    out.set(car.x - fx * 6.2, 2.4, car.z - fz * 6.2);
+    look.set(car.x + fx * 10, 1.2, car.z + fz * 10);
+  }
+
+  function followOnFoot(game, out, look) {
+    const p = game.player;
+    const dist = 4.2;
+    const cx = Math.sin(p.cameraYaw) * Math.cos(p.cameraPitch);
+    const cz = Math.cos(p.cameraYaw) * Math.cos(p.cameraPitch);
+    out.set(p.x + cx * dist, p.y + 1.6 + Math.sin(p.cameraPitch) * dist, p.z + cz * dist);
+    look.set(p.x - Math.sin(p.cameraYaw) * 2, p.y + 1.6, p.z - Math.cos(p.cameraYaw) * 2);
+  }
+
   const api = {
     scene,
     camera,
     renderer,
-    /** A fixed camera for screenshot poses; null returns to the follow camera. */
     setShotCamera(position, lookAt) {
       shotCamera = position ? { position, lookAt } : null;
     },
@@ -202,71 +271,37 @@ export function createRenderer(canvas, opts = {}) {
       skid.life = 9;
     },
     updateEffects(dt) {
-      for (let i = 0; i < SPARKS; i += 1) {
-        if (sparkLife[i] <= 0) continue;
-        sparkLife[i] -= dt;
-        sparkVel[i].y -= 18 * dt;
-        sparkPos[i * 3] += sparkVel[i].x * dt;
-        sparkPos[i * 3 + 1] = Math.max(0.05, sparkPos[i * 3 + 1] + sparkVel[i].y * dt);
-        sparkPos[i * 3 + 2] += sparkVel[i].z * dt;
-        if (sparkLife[i] <= 0) sparkPos[i * 3 + 1] = -100;
-      }
-      sparkGeo.attributes.position.needsUpdate = true;
-      for (const skid of skids) {
-        if (!skid.mesh.visible) continue;
-        skid.life -= dt;
-        skid.mesh.material.opacity = Math.max(0, (skid.life / 9) * 0.55);
-        if (skid.life <= 0) skid.mesh.visible = false;
-      }
-      for (const puff of smokes) {
-        if (!puff.sprite.visible) continue;
-        puff.life -= dt;
-        const grow = 1 + (0.9 - Math.max(0, puff.life)) * 6;
-        puff.sprite.scale.set(grow * 2, grow * 2, 1);
-        puff.sprite.material.opacity = Math.max(0, puff.life / 0.9) * 0.5;
-        if (puff.life <= 0) puff.sprite.visible = false;
-      }
+      stepSparks(dt);
+      stepSkids(dt);
+      stepSmoke(dt);
     },
     updateEnvironment(dt, world) {
       if (world && world.waterTex) {
         world.waterTex.offset.x += dt * 0.004;
         world.waterTex.offset.y += dt * 0.002;
       }
-      for (const cloud of clouds) {
+      for (let i = 0; i < clouds.length; i += 1) {
+        const cloud = clouds[i];
         cloud.sprite.position.x += cloud.speed * dt;
-        if (cloud.sprite.position.x > 1300) cloud.sprite.position.x = -1300;
+        if (cloud.sprite.position.x > 1450) cloud.sprite.position.x = -1450;
       }
     },
-    /** GTA-style follow camera: low and close behind the car, over the shoulder on foot. */
     updateCamera(dt, game) {
       if (shotCamera) {
         camera.position.copy(shotCamera.position);
         camera.lookAt(shotCamera.lookAt);
         return;
       }
-      const targetFov = 66 + (game.playerInCar ? Math.min(1, Math.abs(game.playerCar.speed) / 40) * 12 : 0);
+      const boost = game.playerInCar ? Math.min(1, Math.abs(game.playerCar.speed) / 40) * 12 : 0;
+      const targetFov = 66 + boost;
       if (Math.abs(camera.fov - targetFov) > 0.1) {
         camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4);
         camera.updateProjectionMatrix();
       }
       const desired = new THREE.Vector3();
       const lookAt = new THREE.Vector3();
-      if (game.playerInCar && game.playerCar) {
-        const car = game.playerCar;
-        const fx = Math.sin(car.heading);
-        const fz = Math.cos(car.heading);
-        desired.set(car.x - fx * 6.5, 2.3, car.z - fz * 6.5);
-        lookAt.set(car.x + fx * 10, 1.2, car.z + fz * 10);
-      } else {
-        const p = game.player;
-        const yaw = p.cameraYaw;
-        const pitch = p.cameraPitch;
-        const dist = 4.2;
-        const cx = Math.sin(yaw) * Math.cos(pitch);
-        const cz = Math.cos(yaw) * Math.cos(pitch);
-        desired.set(p.x + cx * dist, p.y + 1.6 + Math.sin(pitch) * dist, p.z + cz * dist);
-        lookAt.set(p.x - Math.sin(yaw) * 2, p.y + 1.6, p.z - Math.cos(yaw) * 2);
-      }
+      if (game.playerInCar && game.playerCar) followCar(game, desired, lookAt);
+      else followOnFoot(game, desired, lookAt);
       const k = 1 - Math.exp(-dt * 5);
       camera.position.lerp(desired, k);
       camera.position.y = Math.max(camera.position.y, 1.2);
@@ -275,21 +310,21 @@ export function createRenderer(canvas, opts = {}) {
       sun.position.set(anchor.x + SUN_DIR.x * 320, SUN_DIR.y * 320, anchor.z + SUN_DIR.z * 320);
       sun.target.position.set(anchor.x, 0, anchor.z);
     },
-    /** Night for the neon downtown shot: dark sky, dim cool light, lamps and neon pop. */
     setNight(on) {
-      const u = sky.material.uniforms;
-      u.top.value.setHex(on ? 0x0d1230 : COLORS.skyTop);
-      u.horizon.value.setHex(on ? 0x2a1a4a : COLORS.skyHorizon);
-      u.band.value.setHex(on ? 0x1a1030 : COLORS.skyBand);
-      u.sunColor.value.setHex(on ? 0x8a9ac0 : COLORS.sun);
+      const uni = sky.material.uniforms;
+      uni.top.value.setHex(on ? 0x0d1230 : COLORS.skyTop);
+      uni.horizon.value.setHex(on ? 0x2a1a4a : COLORS.skyHorizon);
+      uni.band.value.setHex(on ? 0x1a1030 : COLORS.skyBand);
+      uni.sunColor.value.setHex(on ? 0x8a9ac0 : COLORS.sun);
       scene.fog.color.setHex(on ? 0x141428 : 0xe89a72);
       sun.intensity = on ? 0.5 : 2.8;
       sun.color.setHex(on ? 0x8a9ac8 : 0xffb070);
-      sun.castShadow = !on; // no long black shadows at night
+      sun.castShadow = !on;
       hemi.intensity = on ? 0.35 : 0.9;
-      sunSprite.visible = !on;
-      sunCore.visible = !on;
-      for (const c of clouds) c.sprite.material.opacity = on ? 0.18 : 0.45;
+      sunHalo.visible = !on;
+      sunDisc.visible = !on;
+      skyline.visible = !on;
+      for (const c of clouds) c.sprite.material.opacity = on ? 0.18 : 0.6;
       renderer.toneMappingExposure = on ? 1.0 : 1.15;
     },
     render() {
