@@ -4,6 +4,15 @@ export const ACTION_INTERACT = 4;
 export const ACTION_ENTER_CAR = 8;
 export const ACTION_JUMP = 16;
 
+// Keys that scroll the page or move focus if the browser gets them first.
+const PREVENTED = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
+
+// Which held-this-frame keys raise which edge-triggered action.
+const ACTION_BINDINGS = [
+  [['Enter', 'Space'], ACTION_CONFIRM], [['Escape', 'KeyP'], ACTION_PAUSE],
+  [['KeyE'], ACTION_INTERACT], [['KeyF'], ACTION_ENTER_CAR], [['Space'], ACTION_JUMP],
+];
+
 export function createInput(canvas) {
   const keys = new Set();
   const pressed = new Set();
@@ -12,21 +21,19 @@ export function createInput(canvas) {
   let clicked = false;
   let pointerLocked = false;
   let enabled = true;
-
   function onKeyDown(event) {
     if (!enabled || event.repeat) return;
     keys.add(event.code);
     pressed.add(event.code);
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(event.code)) event.preventDefault();
+    if (PREVENTED.has(event.code)) event.preventDefault();
   }
   function onKeyUp(event) {
     keys.delete(event.code);
   }
   function onMouseMove(event) {
-    if (pointerLocked) {
-      mouseDX += event.movementX || 0;
-      mouseDY += event.movementY || 0;
-    }
+    if (!pointerLocked) return;
+    mouseDX += event.movementX || 0;
+    mouseDY += event.movementY || 0;
   }
   function onMouseDown(event) {
     if (event.button === 0) clicked = true;
@@ -37,21 +44,15 @@ export function createInput(canvas) {
   function onBlur() {
     keys.clear();
   }
-
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('mousemove', onMouseMove);
-  window.addEventListener('mousedown', onMouseDown);
-  window.addEventListener('blur', onBlur);
-  document.addEventListener('pointerlockchange', onPointerLockChange);
-
+  const listeners = [
+    [window, 'keydown', onKeyDown], [window, 'keyup', onKeyUp],
+    [window, 'mousemove', onMouseMove], [window, 'mousedown', onMouseDown],
+    [window, 'blur', onBlur], [document, 'pointerlockchange', onPointerLockChange],
+  ];
+  for (const [target, type, handler] of listeners) target.addEventListener(type, handler);
   function safePointer(fn) {
-    try {
-      fn();
-    } catch {
-    }
+    try { fn(); } catch { /* pointer lock can throw when the page is not focused */ }
   }
-
   return {
     keys,
     get pointerLocked() {
@@ -70,7 +71,7 @@ export function createInput(canvas) {
     isDown(code) {
       return keys.has(code);
     },
-    /** True once for the frame the key went down; call after reading it. */
+    // True once for the frame the key went down; call after reading it.
     wasPressed(code) {
       return pressed.has(code);
     },
@@ -85,14 +86,17 @@ export function createInput(canvas) {
       clicked = false;
       return was;
     },
-    /** Edge-triggered game actions, consumed once per frame. */
+    // Edge-triggered game actions, consumed once per frame.
     takeActions() {
       let actions = 0;
-      if (pressed.has('Enter') || pressed.has('Space')) actions |= ACTION_CONFIRM;
-      if (pressed.has('Escape') || pressed.has('KeyP')) actions |= ACTION_PAUSE;
-      if (pressed.has('KeyE')) actions |= ACTION_INTERACT;
-      if (pressed.has('KeyF')) actions |= ACTION_ENTER_CAR;
-      if (pressed.has('Space')) actions |= ACTION_JUMP;
+      for (const [codes, flag] of ACTION_BINDINGS) {
+        for (const code of codes) {
+          if (pressed.has(code)) {
+            actions |= flag;
+            break;
+          }
+        }
+      }
       return actions;
     },
     endFrame() {
